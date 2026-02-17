@@ -9,89 +9,96 @@ from reportlab.pdfgen import canvas
 import time
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="Smart Parking System", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Smart Parking System", layout="wide", initial_sidebar_state="expanded")
 
 # ---------------- CUSTOM CSS FOR ATTRACTIVE UI ----------------
 st.markdown("""
 <style>
-    /* Main container */
-    .main {
-        padding: 1rem 2rem;
-    }
-    /* Title */
-    .title {
-        text-align: center;
-        font-size: 3rem;
-        font-weight: 700;
-        color: #1E3A8A;
-        margin-bottom: 1rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-    }
-    /* Metric cards */
-    .metric-card {
+    /* Main background and text */
+    .stApp {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 15px;
-        padding: 1.5rem;
-        text-align: center;
-        color: white;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        color: #ffffff;
     }
-    .metric-label {
-        font-size: 1.2rem;
-        opacity: 0.9;
+    /* Sidebar styling */
+    .css-1d391kg {
+        background: rgba(255,255,255,0.1);
+        backdrop-filter: blur(10px);
     }
-    .metric-value {
-        font-size: 2.5rem;
-        font-weight: bold;
-        margin-top: 0.5rem;
-    }
-    /* Slot cards */
+    /* Cards for slots */
     .slot-card {
+        background: rgba(255,255,255,0.2);
         border-radius: 15px;
-        padding: 1rem;
+        padding: 20px;
         text-align: center;
-        font-weight: 600;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        transition: transform 0.3s;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255,255,255,0.18);
+        transition: transform 0.2s;
     }
     .slot-card:hover {
-        transform: scale(1.05);
+        transform: scale(1.02);
     }
     .slot-free {
         background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
-        color: #1e3c72;
+        color: #000;
     }
     .slot-occupied {
         background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        color: white;
+        color: #fff;
+    }
+    /* Metric boxes */
+    .metric-box {
+        background: rgba(255,255,255,0.25);
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     /* Buttons */
     .stButton > button {
-        border-radius: 25px;
-        font-weight: 600;
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        padding: 10px 30px;
+        font-weight: bold;
         transition: all 0.3s;
     }
     .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        background: linear-gradient(45deg, #764ba2, #667eea);
+        transform: scale(1.05);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
     }
-    /* Section headers */
-    .section-header {
-        font-size: 1.8rem;
+    /* Success/info/warning boxes */
+    .stAlert {
+        border-radius: 10px;
+        border-left: 5px solid;
+    }
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 50px;
+        padding: 5px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 50px;
+        color: white;
         font-weight: 600;
-        color: #2c3e50;
-        margin: 1.5rem 0 1rem 0;
-        border-bottom: 3px solid #3498db;
-        padding-bottom: 0.5rem;
     }
-    /* Login container */
-    .login-box {
-        max-width: 400px;
-        margin: 5rem auto;
-        padding: 2rem;
-        background: white;
-        border-radius: 20px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    .stTabs [aria-selected="true"] {
+        background: rgba(255,255,255,0.3);
+    }
+    /* Headers */
+    h1, h2, h3 {
+        color: white;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    /* Dataframes */
+    .dataframe {
+        background: rgba(255,255,255,0.1);
+        border-radius: 10px;
+        padding: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -100,8 +107,11 @@ st.markdown("""
 PARKING_CSV = "parking_data.csv"
 BILLING_CSV = "billing_data.csv"
 INVOICE_DIR = "invoices"
-
 os.makedirs(INVOICE_DIR, exist_ok=True)
+
+# ---------------- CONSTANT ----------------
+RATE_PER_HOUR = 20
+UPI_ID = "smartparking@upi"
 
 # ---------------- LOGIN ----------------
 ADMIN_USERNAME = "admin"
@@ -110,45 +120,44 @@ ADMIN_PASSWORD = "1234"
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-def login():
-    st.markdown("<div class='login-box'>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🔐 Smart Parking Admin</h1>", unsafe_allow_html=True)
-    u = st.text_input("Username", placeholder="Enter username")
-    p = st.text_input("Password", type="password", placeholder="Enter password")
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        if st.button("Login", use_container_width=True):
-            if u == ADMIN_USERNAME and p == ADMIN_PASSWORD:
-                st.session_state.logged_in = True
-                st.rerun()
-            else:
-                st.error("Invalid Credentials")
-    st.markdown("</div>", unsafe_allow_html=True)
-
 if not st.session_state.logged_in:
-    login()
+    st.title("🔐 Smart Parking Admin Login")
+    with st.container():
+        col1, col2, col3 = st.columns([1,2,1])
+        with col2:
+            u = st.text_input("Username", placeholder="Enter username")
+            p = st.text_input("Password", type="password", placeholder="Enter password")
+            if st.button("Login", use_container_width=True):
+                if u == ADMIN_USERNAME and p == ADMIN_PASSWORD:
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.error("Invalid Credentials")
     st.stop()
 
-# Logout button in sidebar
+# ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/null/parking.png", width=80)
-    st.markdown("## **Smart Parking**")
+    st.markdown("## Smart Parking")
+    st.markdown("---")
+    st.markdown(f"**Welcome, Admin** 👋")
+    st.markdown(f"**Rate:** ₹{RATE_PER_HOUR}/hour")
+    st.markdown(f"**UPI ID:** `{UPI_ID}`")
     st.markdown("---")
     if st.button("🚪 Logout", use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
 
-# ---------------- CONSTANT ----------------
-RATE_PER_HOUR = 20
-
-# ---------------- INIT FILES ----------------
+# ---------------- INIT CSV ----------------
 if not os.path.exists(PARKING_CSV):
     with open(PARKING_CSV, "w", newline="") as f:
         csv.writer(f).writerow(["Slot", "Status", "Vehicle", "EntryTime"])
 
 if not os.path.exists(BILLING_CSV):
     with open(BILLING_CSV, "w", newline="") as f:
-        csv.writer(f).writerow(["Vehicle", "Slot", "EntryTime", "ExitTime", "Minutes", "Amount"])
+        csv.writer(f).writerow(
+            ["Vehicle", "Slot", "EntryTime", "ExitTime", "Minutes", "Amount", "PaymentStatus"]
+        )
 
 # ---------------- SESSION STATE ----------------
 if "slots" not in st.session_state:
@@ -157,119 +166,131 @@ if "slots" not in st.session_state:
         for i in range(1, 6)
     }
 
-# ---------------- MAIN UI ----------------
-st.markdown("<h1 class='title'>🅿 Smart Parking Management</h1>", unsafe_allow_html=True)
+if "payment_pending" not in st.session_state:
+    st.session_state.payment_pending = None
 
-# ---------------- DASHBOARD METRICS ----------------
-total = len(st.session_state.slots)
-free = sum(1 for s in st.session_state.slots.values() if s["status"] == "Free")
-occupied = total - free
+# ---------------- MAIN TABS ----------------
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "🚗 Parking Operations", "💳 Billing & Payment", "📈 Revenue Analytics"])
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.markdown(f"""
-    <div class='metric-card'>
-        <div class='metric-label'>Total Slots</div>
-        <div class='metric-value'>{total}</div>
-    </div>
-    """, unsafe_allow_html=True)
-with col2:
-    st.markdown(f"""
-    <div class='metric-card' style='background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);'>
-        <div class='metric-label'>Free Slots</div>
-        <div class='metric-value'>{free}</div>
-    </div>
-    """, unsafe_allow_html=True)
-with col3:
-    st.markdown(f"""
-    <div class='metric-card' style='background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);'>
-        <div class='metric-label'>Occupied Slots</div>
-        <div class='metric-value'>{occupied}</div>
-    </div>
-    """, unsafe_allow_html=True)
+# ==================== TAB 1: DASHBOARD ====================
+with tab1:
+    st.header("📊 Live Dashboard")
 
-st.markdown("---")
+    # Metrics
+    total = len(st.session_state.slots)
+    free = sum(1 for s in st.session_state.slots.values() if s["status"] == "Free")
+    occupied = total - free
 
-# ---------------- LIVE SLOT STATUS ----------------
-st.markdown("<div class='section-header'>📊 Live Slot Status</div>", unsafe_allow_html=True)
-cols = st.columns(5)
-for i, (slot, data) in enumerate(st.session_state.slots.items()):
-    if data["status"] == "Free":
-        cols[i].markdown(f"""
-        <div class='slot-card slot-free'>
-            <div style='font-size: 1.5rem;'>🅿️{slot}</div>
-            <div style='font-size: 1rem;'>🟢 FREE</div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        mins = int((datetime.now() - data["entry_time"]).total_seconds() / 60)
-        cols[i].markdown(f"""
-        <div class='slot-card slot-occupied'>
-            <div style='font-size: 1.5rem;'>🅿️{slot}</div>
-            <div style='font-size: 0.9rem;'>🔴 {data['vehicle']}</div>
-            <div style='font-size: 0.8rem;'>{mins} min</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-st.markdown("---")
-
-# ---------------- TWO-COLUMN LAYOUT FOR ACTIONS ----------------
-col_left, col_right = st.columns(2)
-
-with col_left:
-    st.markdown("<div class='section-header'>🚗 Manual Entry</div>", unsafe_allow_html=True)
-    vehicle = st.text_input("Vehicle Number", placeholder="e.g., MH12AB1234")
-    free_slots = [s for s in st.session_state.slots if st.session_state.slots[s]["status"] == "Free"]
-    if free_slots:
-        slot = st.selectbox("Select Slot", free_slots)
-        if st.button("Park Vehicle", use_container_width=True):
-            now = datetime.now()
-            st.session_state.slots[slot] = {
-                "status": "Occupied",
-                "vehicle": vehicle,
-                "entry_time": now
-            }
-            with open(PARKING_CSV, "a", newline="") as f:
-                csv.writer(f).writerow([slot, "Occupied", vehicle, now.isoformat()])
-            st.success(f"✅ Vehicle {vehicle} parked in Slot {slot}")
-            time.sleep(1)
-            st.rerun()
-    else:
-        st.warning("⚠️ Parking Full")
-
-with col_right:
-    st.markdown("<div class='section-header'>📷 ANPR Entry</div>", unsafe_allow_html=True)
-    st.markdown("Click to simulate camera capture")
-    if st.button("Scan Number Plate", use_container_width=True):
-        plate = f"MH{random.randint(10,99)}AB{random.randint(1000,9999)}"
-        free_slots_anpr = [s for s in st.session_state.slots if st.session_state.slots[s]["status"] == "Free"]
-        if free_slots_anpr:
-            slot = free_slots_anpr[0]
-            now = datetime.now()
-            st.session_state.slots[slot] = {
-                "status": "Occupied",
-                "vehicle": plate,
-                "entry_time": now
-            }
-            with open(PARKING_CSV, "a", newline="") as f:
-                csv.writer(f).writerow([slot, "Occupied", plate, now.isoformat()])
-            st.success(f"✅ Detected: {plate}")
-            st.success(f"✅ Auto-parked in Slot {slot}")
-            time.sleep(1)
-            st.rerun()
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown('<div class="metric-box"><h3>🅿 Total Slots</h3><h2>{}</h2></div>'.format(total), unsafe_allow_html=True)
+    with col2:
+        st.markdown('<div class="metric-box"><h3>🟢 Free</h3><h2>{}</h2></div>'.format(free), unsafe_allow_html=True)
+    with col3:
+        st.markdown('<div class="metric-box"><h3>🔴 Occupied</h3><h2>{}</h2></div>'.format(occupied), unsafe_allow_html=True)
+    with col4:
+        # Today's revenue quick peek
+        if os.path.exists(BILLING_CSV):
+            df_quick = pd.read_csv(BILLING_CSV)
+            if not df_quick.empty:
+                df_quick["ExitTime"] = pd.to_datetime(df_quick["ExitTime"], errors="coerce")
+                today_rev = df_quick[df_quick["ExitTime"].dt.date == datetime.now().date()]["Amount"].sum()
+                st.markdown(f'<div class="metric-box"><h3>💰 Today</h3><h2>₹{today_rev}</h2></div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="metric-box"><h3>💰 Today</h3><h2>₹0</h2></div>', unsafe_allow_html=True)
         else:
-            st.error("❌ Parking Full")
+            st.markdown('<div class="metric-box"><h3>💰 Today</h3><h2>₹0</h2></div>', unsafe_allow_html=True)
 
-st.markdown("---")
+    st.markdown("---")
 
-# ---------------- EXIT SECTION ----------------
-st.markdown("<div class='section-header'>🚙 Exit & Billing</div>", unsafe_allow_html=True)
-col_exit1, col_exit2 = st.columns([1,1])
-with col_exit1:
-    exit_slot = st.selectbox("Select Slot to Exit", st.session_state.slots.keys())
-with col_exit2:
-    st.markdown("<br>", unsafe_allow_html=True)  # spacing
-    if st.button("Process Exit", use_container_width=True):
+    # Live Slot Status with visual cards
+    st.subheader("🅿️ Slot Status")
+    cols = st.columns(5)
+    for i, (slot, data) in enumerate(st.session_state.slots.items()):
+        with cols[i]:
+            if data["status"] == "Free":
+                st.markdown(f'''
+                <div class="slot-card slot-free">
+                    <h3>Slot {slot}</h3>
+                    <p style="font-size: 24px;">🟢</p>
+                    <p>Free</p>
+                </div>
+                ''', unsafe_allow_html=True)
+            else:
+                mins = int((datetime.now() - data["entry_time"]).total_seconds() / 60)
+                st.markdown(f'''
+                <div class="slot-card slot-occupied">
+                    <h3>Slot {slot}</h3>
+                    <p style="font-size: 24px;">🔴</p>
+                    <p><b>{data["vehicle"]}</b></p>
+                    <p>{mins} min</p>
+                </div>
+                ''', unsafe_allow_html=True)
+
+# ==================== TAB 2: PARKING OPERATIONS ====================
+with tab2:
+    st.header("🚗 Parking Operations")
+
+    col1, col2 = st.columns(2)
+
+    # ----- MANUAL ENTRY -----
+    with col1:
+        st.subheader("📝 Manual Entry")
+        vehicle = st.text_input("Vehicle Number", key="manual_vehicle")
+        free_slots = [s for s in st.session_state.slots if st.session_state.slots[s]["status"] == "Free"]
+        if free_slots:
+            slot = st.selectbox("Select Slot", free_slots, key="manual_slot")
+            if st.button("🅿 Park Vehicle", use_container_width=True):
+                now = datetime.now()
+                st.session_state.slots[slot] = {
+                    "status": "Occupied",
+                    "vehicle": vehicle,
+                    "entry_time": now
+                }
+                with open(PARKING_CSV, "a", newline="") as f:
+                    csv.writer(f).writerow([slot, "Occupied", vehicle, now.isoformat()])
+                st.success(f"✅ Vehicle {vehicle} parked in Slot {slot}")
+                st.rerun()
+        else:
+            st.warning("⚠️ Parking Full")
+
+    # ----- ANPR SIMULATION -----
+    with col2:
+        st.subheader("📷 ANPR Simulation")
+        if st.button("📸 Scan Number Plate", use_container_width=True):
+            plate = f"MH{random.randint(10,99)}AB{random.randint(1000,9999)}"
+            free_slots_anpr = [s for s in st.session_state.slots if st.session_state.slots[s]["status"] == "Free"]
+            if free_slots_anpr:
+                slot = free_slots_anpr[0]
+                now = datetime.now()
+                st.session_state.slots[slot] = {
+                    "status": "Occupied",
+                    "vehicle": plate,
+                    "entry_time": now
+                }
+                with open(PARKING_CSV, "a", newline="") as f:
+                    csv.writer(f).writerow([slot, "Occupied", plate, now.isoformat()])
+                st.success(f"📡 Detected: {plate} → Slot {slot}")
+                st.rerun()
+            else:
+                st.error("❌ Parking Full")
+
+    st.markdown("---")
+    # Optionally show recent entries from CSV
+    if os.path.exists(PARKING_CSV):
+        df_park = pd.read_csv(PARKING_CSV)
+        if not df_park.empty:
+            st.subheader("📋 Recent Parking Records")
+            st.dataframe(df_park.tail(5), use_container_width=True)
+
+# ==================== TAB 3: BILLING & PAYMENT ====================
+with tab3:
+    st.header("💳 Billing & Payment")
+
+    # Exit section
+    st.subheader("🚙 Vehicle Exit")
+    exit_slot = st.selectbox("Select Slot to Exit", st.session_state.slots.keys(), key="exit_slot")
+    if st.button("💰 Calculate Bill", use_container_width=True):
         data = st.session_state.slots[exit_slot]
         if data["status"] == "Occupied":
             exit_time = datetime.now()
@@ -278,66 +299,124 @@ with col_exit2:
             hours = max(1, minutes // 60)
             amount = hours * RATE_PER_HOUR
 
-            # Save to billing
-            with open(BILLING_CSV, "a", newline="") as f:
-                csv.writer(f).writerow([
-                    data["vehicle"],
-                    exit_slot,
-                    entry_time.isoformat(),
-                    exit_time.isoformat(),
-                    minutes,
-                    amount
-                ])
+            st.session_state.payment_pending = {
+                "vehicle": data["vehicle"],
+                "slot": exit_slot,
+                "entry": entry_time,
+                "exit": exit_time,
+                "minutes": minutes,
+                "amount": amount
+            }
 
-            # Generate invoice
-            def generate_invoice(vehicle, slot, entry, exit_t, mins, amt):
-                filename = f"{INVOICE_DIR}/invoice_{vehicle}_{exit_t.strftime('%Y%m%d_%H%M%S')}.pdf"
-                c = canvas.Canvas(filename, pagesize=A4)
-                width, height = A4
-                c.setFont("Helvetica-Bold", 16)
-                c.drawString(200, height - 50, "Parking Invoice")
-                c.setFont("Helvetica", 12)
-                c.drawString(50, height - 100, f"Vehicle: {vehicle}")
-                c.drawString(50, height - 130, f"Slot: {slot}")
-                c.drawString(50, height - 160, f"Entry Time: {entry}")
-                c.drawString(50, height - 190, f"Exit Time: {exit_t}")
-                c.drawString(50, height - 220, f"Duration: {mins} minutes")
-                c.drawString(50, height - 250, f"Amount: ₹{amt}")
-                c.save()
-                return filename
-
-            pdf = generate_invoice(data["vehicle"], exit_slot, entry_time, exit_time, minutes, amount)
-
-            st.success(f"🚗 {data['vehicle']} | Duration: {minutes} min | Bill: ₹{amount}")
-            with open(pdf, "rb") as f:
-                st.download_button("📥 Download Invoice", f, file_name=os.path.basename(pdf))
-
-            # Free slot
+            # Free the slot immediately
             st.session_state.slots[exit_slot] = {
                 "status": "Free",
                 "vehicle": None,
                 "entry_time": None
             }
-            time.sleep(1)
             st.rerun()
         else:
-            st.warning("Slot already free")
+            st.warning("⚠️ Slot already free")
 
-st.markdown("---")
+    st.markdown("---")
 
-# ---------------- REVENUE ANALYTICS ----------------
-st.markdown("<div class='section-header'>💰 Revenue Analytics</div>", unsafe_allow_html=True)
-if os.path.exists(BILLING_CSV):
-    df = pd.read_csv(BILLING_CSV)
-    if not df.empty:
-        df["ExitTime"] = pd.to_datetime(df["ExitTime"], errors="coerce")
-        today = datetime.now().date()
-        daily = df[df["ExitTime"].dt.date == today]["Amount"].sum()
-        st.metric("Today's Revenue", f"₹{daily}")
-        df["Month"] = df["ExitTime"].dt.to_period("M")
-        monthly = df.groupby("Month")["Amount"].sum().astype(float)
-        st.line_chart(monthly)
+    # Payment Gateway
+    if st.session_state.payment_pending:
+        bill = st.session_state.payment_pending
+        st.subheader("💳 UPI Payment Gateway")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f'''
+            <div style="background: rgba(255,255,255,0.2); padding: 20px; border-radius: 15px;">
+                <h3 style="color:white;">Bill Details</h3>
+                <p>🚗 Vehicle: <b>{bill["vehicle"]}</b></p>
+                <p>🅿 Slot: <b>{bill["slot"]}</b></p>
+                <p>⏱ Duration: <b>{bill["minutes"]} minutes</b></p>
+                <p>💰 Amount: <b>₹{bill["amount"]}</b></p>
+                <p>📅 Entry: {bill["entry"].strftime("%Y-%m-%d %H:%M")}</p>
+                <p>📅 Exit: {bill["exit"].strftime("%Y-%m-%d %H:%M")}</p>
+            </div>
+            ''', unsafe_allow_html=True)
+        with col2:
+            st.markdown(f'''
+            <div style="background: rgba(255,255,255,0.2); padding: 20px; border-radius: 15px; text-align: center;">
+                <h3 style="color:white;">Scan & Pay</h3>
+                <p>UPI ID: <code>{UPI_ID}</code></p>
+            ''', unsafe_allow_html=True)
+            qr_data = f"upi://pay?pa={UPI_ID}&pn=SmartParking&am={bill['amount']}&cu=INR"
+            st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={qr_data}", width=200)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        colA, colB = st.columns(2)
+        with colA:
+            if st.button("✅ I Have Paid", use_container_width=True):
+                # Save to billing CSV
+                with open(BILLING_CSV, "a", newline="") as f:
+                    csv.writer(f).writerow([
+                        bill["vehicle"],
+                        bill["slot"],
+                        bill["entry"].isoformat(),
+                        bill["exit"].isoformat(),
+                        bill["minutes"],
+                        bill["amount"],
+                        "PAID"
+                    ])
+
+                # Generate PDF invoice
+                filename = f"{INVOICE_DIR}/invoice_{bill['vehicle']}_{bill['exit'].strftime('%Y%m%d_%H%M%S')}.pdf"
+                c = canvas.Canvas(filename, pagesize=A4)
+                c.setFont("Helvetica-Bold", 16)
+                c.drawString(100, 800, "Smart Parking Invoice")
+                c.setFont("Helvetica", 12)
+                c.drawString(100, 770, f"Vehicle: {bill['vehicle']}")
+                c.drawString(100, 750, f"Slot: {bill['slot']}")
+                c.drawString(100, 730, f"Entry Time: {bill['entry'].strftime('%Y-%m-%d %H:%M')}")
+                c.drawString(100, 710, f"Exit Time: {bill['exit'].strftime('%Y-%m-%d %H:%M')}")
+                c.drawString(100, 690, f"Duration: {bill['minutes']} minutes")
+                c.drawString(100, 670, f"Amount Paid: ₹{bill['amount']}")
+                c.drawString(100, 650, f"UPI ID: {UPI_ID}")
+                c.save()
+
+                with open(filename, "rb") as f:
+                    st.download_button("📄 Download Invoice", f, file_name=os.path.basename(filename), use_container_width=True)
+
+                st.success("🎉 Payment Successful! Thank you.")
+                st.session_state.payment_pending = None
+                st.rerun()
+        with colB:
+            if st.button("❌ Cancel", use_container_width=True):
+                st.session_state.payment_pending = None
+                st.rerun()
     else:
-        st.info("No billing data yet")
-else:
-    st.info("No billing data yet")
+        st.info("👆 No pending payment. Process an exit to continue.")
+
+# ==================== TAB 4: REVENUE ANALYTICS ====================
+with tab4:
+    st.header("📈 Revenue Analytics")
+
+    if os.path.exists(BILLING_CSV):
+        df = pd.read_csv(BILLING_CSV)
+        if not df.empty:
+            df["ExitTime"] = pd.to_datetime(df["ExitTime"], errors="coerce")
+            df["EntryTime"] = pd.to_datetime(df["EntryTime"], errors="coerce")
+
+            # Daily revenue
+            today = datetime.now().date()
+            daily = df[df["ExitTime"].dt.date == today]["Amount"].sum()
+            st.metric("Today's Revenue", f"₹{daily}")
+
+            # Monthly revenue chart
+            df["Month"] = df["ExitTime"].dt.to_period("M").astype(str)
+            monthly = df.groupby("Month")["Amount"].sum().reset_index()
+            monthly.columns = ["Month", "Revenue"]
+
+            st.subheader("Monthly Revenue Trend")
+            st.line_chart(monthly.set_index("Month"))
+
+            # Optional: Show recent transactions
+            with st.expander("📋 Recent Transactions"):
+                st.dataframe(df[["Vehicle", "Slot", "ExitTime", "Amount"]].tail(10), use_container_width=True)
+        else:
+            st.info("No revenue data yet. Complete some payments to see analytics.")
+    else:
+        st.info("No billing records found.")
